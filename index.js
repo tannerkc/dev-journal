@@ -3,49 +3,75 @@
 import { program } from 'commander';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
+import boxen from 'boxen';
 import fs from 'fs';
+import {
+    findSelectedEntry,
+    listAvailableEditors,
+    getAppropriateGreeting,
+    getHexColor,
+    loadEntries,
+    saveEntry,
+    log, config, configFilePath
+} from "./utils.js";
+import {execSync} from "child_process";
 
-const journalFilePath = 'journal.json';
-const configFilePath = 'config.json';
+const ui = new inquirer.ui.BottomBar();
 
-let config = {};
-if (fs.existsSync(configFilePath)) {
-    const data = fs.readFileSync(configFilePath, 'utf8');
-    config = JSON.parse(data);
-}
-
-const log = console.log;
+process.env.EDITOR = 'nano';
+process.env.VISUAL = config.selectedEditor;
 
 program
     .command('config')
     .description('Configure user settings')
-    .action(() => {
-        const questions = [
-            {
-                type: 'input',
-                name: 'name',
-                message: 'Enter your name:',
-                validate: value => value.trim() !== '' ? true : 'Please enter your name.',
-            },
-            {
-                type: 'input',
-                name: 'color',
-                message: 'What\'s your favorite colour? (hex value)',
-                validate: value => /^#[0-9A-F]{6}$/i.test(value) ? true : 'Please enter a valid hex color value (e.g., #RRGGBB)',
-            },
-        ];
+    .action(async () => {
+        try{
+            ui.log.write(config.name ? `${getAppropriateGreeting()}, ${config.name}! Let's set your configurations:` : 'Hello! It\'s nice to meet you!')
+            const questions = [
+                {
+                    type: 'input',
+                    name: 'name',
+                    message: 'What\'s your name?',
+                    default: config.name || '',
+                    validate: value => value.trim() !== '' ? true : 'Please enter your name.',
+                },
+                {
+                    type: 'input',
+                    name: 'color',
+                    message: 'What\'s your favorite colour? (hex value)',
+                    default: config.color || '',
+                    validate: value => /^#[0-9A-F]{6}$/i.test(value) ? true : 'Please enter a valid hex color value (e.g., #RRGGBB)',
+                },
+                {
+                    type: 'list',
+                    name: 'selectedEditor',
+                    message: 'Select an editor:',
+                    default: listAvailableEditors().indexOf(process.env.VISUAL),
+                    choices: listAvailableEditors(),
+                    validate: selected => selected.length > 0 ? true : 'Please select at least one editor',
+                }
+            ];
 
-        inquirer.prompt(questions).then(answers => {
-            config = answers;
-            fs.writeFileSync(configFilePath, JSON.stringify(config, null, 2));
-            log(chalk.hex(config.color)('User settings saved successfully.'));
-        });
+            const newConfig = await inquirer.prompt(questions)
+
+            process.env.VISUAL = newConfig.selectedEditor;
+
+            fs.writeFileSync(configFilePath, JSON.stringify(newConfig, null, 2));
+            log.custom('User settings saved successfully.', newConfig.color)
+        } catch (e) {
+            log.red(e)
+            process.exit(1);
+        }
     });
 
 program
     .command('start')
     .description('Start a new journal entry')
     .action(async () => {
+        if (!config.name) {
+            log.yellow('Please run the config command.');
+            process.exit()
+        }
         const questions = [
             {
                 type: 'number',
@@ -71,27 +97,49 @@ program
                 message: 'How many tasks did you complete today?',
             },
         ];
+        ui.log.write(config.name ? `${getAppropriateGreeting()}, ${config.name}! Let's set your configurations:` : 'Hello! It\'s nice to meet you!')
 
         const answers = await inquirer.prompt(questions);
 
-        console.log('\nJournal prompts:');
-        console.log('- What was the highlight of your day?');
-        console.log('- What challenges did you face?');
-        console.log('- What are you grateful for today?');
-        console.log('- Any lessons learned?');
+        const promptSelection = await inquirer.prompt({
+            type: 'list',
+            name: 'selectedPrompt',
+            message: 'Select journal a prompt (use Enter to select)',
+            choices: [
+                'Freestyle',
+                'What was the highlight of your day?',
+                'What challenges did you face?',
+                'What are you grateful for today?',
+                'Any lessons learned?',
+            ],
+            validate: selected => selected.length > 0 ? true : 'Please select a prompt',
+        });
 
         inquirer.prompt({
             type: 'editor',
             name: 'journalEntry',
             message: 'Type your journal entry (press Enter to start):',
         }).then(entry => {
+
+            const currentDate = new Date();
             const newEntry = {
                 mood: answers.mood,
                 dayRating: answers.dayRating,
                 productivity: answers.productivity,
                 tasksCompleted: answers.tasksCompleted,
+                journalPrompt: promptSelection.selectedPrompt,
                 journalEntry: entry.journalEntry.trim(),
-                dateTime: new Date().toISOString(),
+                date: currentDate.toLocaleDateString(undefined, {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                }),
+                time: currentDate.toLocaleTimeString(undefined, {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false, // Use 24-hour format
+                }),
             };
 
             saveEntry(newEntry);
@@ -104,49 +152,61 @@ program
     .action(() => {
         const entries = loadEntries();
         if (entries.length === 0) {
-            console.log('No entries found.');
+            log.red('No entries found.');
+            process.exit(0);
         } else {
             entries.forEach((entry, index) => {
-                console.log(`Entry ${index + 1}: ${entry.dateTime}`);
+                log.yellow(`Entry ${index + 1}: ${entry.date} ${entry.time}`);
             });
+            process.exit(0);
         }
     });
 
 program
-    .command('view <index>')
-    .description('View a specific journal entry')
-    .action(index => {
+    .command('view <date> [timeOrIndex]')
+    .description('View a specific journal entry by index or date')
+    .action(async (date, timeOrIndex) => {
         const entries = loadEntries();
-        const entry = entries[index - 1];
+        const entry = await findSelectedEntry(date, timeOrIndex, entries);
+
         if (entry) {
-            console.log(`Date/Time: ${entry.dateTime}`);
-            console.log(`Mood: ${entry.mood}/10`);
-            console.log(`Overall Day Rating: ${entry.dayRating}/10`);
-            console.log(`Productivity: ${entry.productivity}/10`);
-            console.log(`Tasks Completed: ${entry.tasksCompleted}`);
-            console.log(`Journal Entry:\n${entry.journalEntry}`);
+            const moodColor = chalk.hex(getHexColor(entry.mood));
+            const dayRatingColor = chalk.hex(getHexColor(entry.dayRating));
+            const productivityColor = chalk.hex(getHexColor(entry.productivity));
+
+            const entryDetails = `Mood: ${moodColor(`${entry.mood}/10`)} | Overall Day Rating: ${dayRatingColor(`${entry.dayRating}/10`)} | Productivity: ${productivityColor(`${entry.productivity}/10`)} | Tasks Completed: ${entry.tasksCompleted}`;
+
+            const box = boxen(
+                entryDetails +
+                '\n\n' + entry.journalEntry,
+                { title: `${entry.date} ${entry.time}`, titleAlignment: 'center', borderColor: config.color, padding: 1}
+            )
+
+            log.default(box);
+            process.exit()
         } else {
-            console.log('Entry not found.');
+            log.red('Entry not found.');
+            process.exit()
         }
     });
 
 program.parse(process.argv);
 
-function saveEntry(entry) {
-    let entries = [];
-    if (fs.existsSync(journalFilePath)) {
-        const data = fs.readFileSync(journalFilePath, 'utf8');
-        entries = JSON.parse(data);
-    }
-    entries.push(entry);
-    fs.writeFileSync(journalFilePath, JSON.stringify(entries, null, 2));
-    console.log('Entry saved successfully.');
-}
+function openInVSCode(text) {
+    // Generate a temporary file name
+    const tempFileName = 'temp-cli-input.txt';
 
-function loadEntries() {
-    if (fs.existsSync(journalFilePath)) {
-        const data = fs.readFileSync(journalFilePath, 'utf8');
-        return JSON.parse(data);
-    }
-    return [];
+    // Write the text to the temporary file
+    fs.writeFileSync(tempFileName, text);
+
+    // Open the file in Visual Studio Code
+    execSync(`code ${tempFileName}`, { stdio: 'inherit' });
+
+    // Read the contents of the file after the user has finished editing
+    const editedText = fs.readFileSync(tempFileName, 'utf8');
+
+    // Delete the temporary file
+    fs.unlinkSync(tempFileName);
+
+    return editedText;
 }
