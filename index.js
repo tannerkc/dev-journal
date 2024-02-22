@@ -4,6 +4,7 @@ import { program } from 'commander';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 import boxen from 'boxen';
+import babar from 'babar';
 import fs from 'fs';
 import {
     findSelectedEntry,
@@ -12,7 +13,7 @@ import {
     getHexColor,
     loadEntries,
     saveEntry,
-    log, config, configFilePath, openInVSCode, openInEditor, mostCommonValue
+    log, config, configFilePath, openInVSCode, openInEditor, mostCommonValue, getAverage
 } from "./utils.js";
 import {execSync} from "child_process";
 
@@ -137,10 +138,10 @@ program
         });
         const currentDate = new Date();
         const newEntry = {
-            mood: answers.mood,
-            dayRating: answers.dayRating,
-            productivity: answers.productivity,
-            tasksCompleted: answers.tasksCompleted,
+            mood: parseInt(answers.mood, 10),
+            dayRating: parseInt(answers.dayRating, 10),
+            productivity: parseInt(answers.productivity, 10),
+            tasksCompleted: parseInt(answers.tasksCompleted, 10),
             journalPrompt: promptSelection.selectedPrompt,
             date: currentDate.toLocaleDateString(undefined, {
                 day: '2-digit',
@@ -153,6 +154,7 @@ program
                 second: '2-digit',
                 hour12: false, // Use 24-hour format
             }),
+            dateTime: currentDate,
         };
 
         let journalEntry;
@@ -212,6 +214,7 @@ program
 
             const box = boxen(
                 entryDetails +
+                entry.journalPrompt +
                 '\n\n' + entry.journalEntry,
                 { title: `${entry.date} ${entry.time}`, titleAlignment: 'center', borderColor: config.color, padding: 1}
             )
@@ -223,5 +226,50 @@ program
             process.exit()
         }
     });
+
+program
+    .command('insights')
+    .alias('i')
+    .description('View insights on journal entries')
+    .action(() => {
+        const entries = loadEntries();
+
+        if (entries.length === 0) {
+            log.red('No entries found.');
+            process.exit(0);
+        }
+
+        const moodValues = entries.map(entry => entry.mood);
+        const dayRatingValues = entries.map(entry => entry.dayRating);
+        const productivityValues = entries.map(entry => entry.productivity);
+
+        const moodData = entries.map(entry => [new Date(entry.dateTime).getTime(), entry.mood]);
+        const productivityData = entries.map(entry => [new Date(entry.dateTime).getTime(), entry.productivity]);
+
+        const moodGraph = babar(moodData, { title: 'Mood over Time', maxY: 10 }); // Customize options as needed
+        const productivityGraph = babar(productivityData, { title: 'Productivity over Time', maxY: 10 }); // Customize options as needed
+
+        log.default('Mood over Time:');
+        log.default(moodGraph);
+
+        log.default('\nProductivity over Time:');
+        log.default(productivityGraph);
+
+        const moodAverage = getAverage(moodValues);
+        const dayRatingAverage = getAverage(dayRatingValues);
+        const productivityAverage = getAverage(productivityValues);
+
+        const moodColor = getHexColor(moodAverage)
+        const dayRatingColor = getHexColor(dayRatingAverage)
+        const productivityColor = getHexColor(productivityAverage)
+
+        log.default('Insights:')
+        log.custom(`Average Mood: ${moodAverage.toFixed(2)}/10`, moodColor)
+        log.custom(`Average Day Rating: ${dayRatingAverage.toFixed(2)}/10`, dayRatingColor)
+        log.custom(`Average Productivity: ${productivityAverage.toFixed(2)}/10`, productivityColor)
+
+        process.exit()
+    });
+
 
 program.parse(process.argv);

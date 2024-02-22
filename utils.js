@@ -78,6 +78,12 @@ export function listAvailableEditors() {
     return editors;
 }
 
+export function getAverage(values) {
+    const sum = values.reduce((acc, curr) => acc + curr, 0);
+    const average = sum / values.length;
+    return Math.floor(average);
+}
+
 export async function findSelectedEntry(date, timeOrIndex, entries) {
     const dateEntries = entries.filter(entry => entry.date.startsWith(date));
 
