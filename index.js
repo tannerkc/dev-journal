@@ -12,7 +12,7 @@ import {
     getHexColor,
     loadEntries,
     saveEntry,
-    log, config, configFilePath
+    log, config, configFilePath, openInVSCode, openInEditor
 } from "./utils.js";
 import {execSync} from "child_process";
 
@@ -21,8 +21,17 @@ const ui = new inquirer.ui.BottomBar();
 process.env.EDITOR = 'nano';
 process.env.VISUAL = config.selectedEditor;
 
+const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+const { name, description, version } = packageJson;
+
+program
+    .name(name)
+    .description(description)
+    .version(version);
+
 program
     .command('config')
+    .alias('c')
     .description('Configure user settings')
     .action(async () => {
         try{
@@ -65,7 +74,8 @@ program
     });
 
 program
-    .command('start')
+    .command('write')
+    .alias('w')
     .description('Start a new journal entry')
     .action(async () => {
         if (!config.name) {
@@ -100,7 +110,6 @@ program
         ui.log.write(config.name ? `${getAppropriateGreeting()}, ${config.name}! Let's set your configurations:` : 'Hello! It\'s nice to meet you!')
 
         const answers = await inquirer.prompt(questions);
-
         const promptSelection = await inquirer.prompt({
             type: 'list',
             name: 'selectedPrompt',
@@ -114,40 +123,51 @@ program
             ],
             validate: selected => selected.length > 0 ? true : 'Please select a prompt',
         });
+        const currentDate = new Date();
+        const newEntry = {
+            mood: answers.mood,
+            dayRating: answers.dayRating,
+            productivity: answers.productivity,
+            tasksCompleted: answers.tasksCompleted,
+            journalPrompt: promptSelection.selectedPrompt,
+            date: currentDate.toLocaleDateString(undefined, {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+            }),
+            time: currentDate.toLocaleTimeString(undefined, {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false, // Use 24-hour format
+            }),
+        };
+        
+        let journalEntry;
+        if (config.selectedEditor === 'atom') {
+            const entryConfirmation = await inquirer.prompt({
+                type: 'confirm',
+                name: 'decision',
+                message: 'Type your journal entry (press Enter to start):',
+            })
+            if(!entryConfirmation.decision) process.exit(0)
+            journalEntry = await openInEditor(config.selectedEditor)
+        } else {
+            const entry = await inquirer.prompt({
+                type: 'editor',
+                name: 'journalEntry',
+                message: 'Type your journal entry (press Enter to start):',
+            })
+            journalEntry = entry.journalEntry
+        }
 
-        inquirer.prompt({
-            type: 'editor',
-            name: 'journalEntry',
-            message: 'Type your journal entry (press Enter to start):',
-        }).then(entry => {
-
-            const currentDate = new Date();
-            const newEntry = {
-                mood: answers.mood,
-                dayRating: answers.dayRating,
-                productivity: answers.productivity,
-                tasksCompleted: answers.tasksCompleted,
-                journalPrompt: promptSelection.selectedPrompt,
-                journalEntry: entry.journalEntry.trim(),
-                date: currentDate.toLocaleDateString(undefined, {
-                    day: '2-digit',
-                    month: '2-digit',
-                    year: 'numeric',
-                }),
-                time: currentDate.toLocaleTimeString(undefined, {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit',
-                    hour12: false, // Use 24-hour format
-                }),
-            };
-
-            saveEntry(newEntry);
-        });
+        newEntry.journalEntry = journalEntry.trim();
+        saveEntry(newEntry);
     });
 
 program
     .command('list')
+    .alias('l')
     .description('List all journal entries')
     .action(() => {
         const entries = loadEntries();
@@ -164,6 +184,7 @@ program
 
 program
     .command('view <date> [timeOrIndex]')
+    .alias('v')
     .description('View a specific journal entry by index or date')
     .action(async (date, timeOrIndex) => {
         const entries = loadEntries();
@@ -191,22 +212,3 @@ program
     });
 
 program.parse(process.argv);
-
-function openInVSCode(text) {
-    // Generate a temporary file name
-    const tempFileName = 'temp-cli-input.txt';
-
-    // Write the text to the temporary file
-    fs.writeFileSync(tempFileName, text);
-
-    // Open the file in Visual Studio Code
-    execSync(`code ${tempFileName}`, { stdio: 'inherit' });
-
-    // Read the contents of the file after the user has finished editing
-    const editedText = fs.readFileSync(tempFileName, 'utf8');
-
-    // Delete the temporary file
-    fs.unlinkSync(tempFileName);
-
-    return editedText;
-}

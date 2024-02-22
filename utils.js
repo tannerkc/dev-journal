@@ -62,10 +62,9 @@ export function getAppropriateGreeting() {
 export function listAvailableEditors() {
     let editors = [];
     try {
-        // Execute system command to list available editors
         const output = execSync('command -v vim nano code emacs subl atom notepad++ notepad gedit geany').toString();
-        // Split the output by newlines to get individual editor paths
         editors = output.trim().split('\n');
+        editors = editors.map(editorPath => editorPath.split('/').pop());
     } catch (error) {
         console.error('Error listing editors:', error.message);
     }
@@ -107,20 +106,59 @@ export async function findSelectedEntry(date, timeOrIndex, entries) {
 
     return selectedEntry;
 }
-export function openInVSCode(text) {
-    // Generate a temporary file name
+export async function openInVSCode() {
     const tempFileName = 'temp-cli-input.txt';
+    fs.writeFileSync(tempFileName, "Your entry will be saved once you save this file.");
 
-    // Write the text to the temporary file
-    fs.writeFileSync(tempFileName, text);
+    execSync(`code --new-window ${tempFileName}`, { stdio: 'inherit' });
 
-    // Open the file in Visual Studio Code
-    execSync(`code ${tempFileName}`, { stdio: 'inherit' });
+    let isFileModified = false;
+    const checkInterval = 1000; // 1 second interval
+    while (!isFileModified) {
+        const stats = fs.statSync(tempFileName);
+        const modifiedTime = stats.mtimeMs;
 
-    // Read the contents of the file after the user has finished editing
+        await new Promise(resolve => setTimeout(resolve, checkInterval));
+
+        const newStats = fs.statSync(tempFileName);
+        const newModifiedTime = newStats.mtimeMs;
+        if (newModifiedTime > modifiedTime) {
+            isFileModified = true;
+        }
+    }
+
     const editedText = fs.readFileSync(tempFileName, 'utf8');
+    fs.unlinkSync(tempFileName);
 
-    // Delete the temporary file
+    return editedText;
+}
+
+export async function openInEditor(editor) {
+    const tempFileName = 'temp-cli-input.txt';
+    fs.writeFileSync(tempFileName, "Your entry will be saved once you save this file.");
+
+    try {
+        execSync(`${editor} ${tempFileName} --new-window`, { stdio: 'inherit' });
+    } catch (error) {
+        throw new Error(`Unsupported editor: ${editor}`);
+    }
+
+    let isFileModified = false;
+    const checkInterval = 1000; // 1 second interval
+    while (!isFileModified) {
+        const stats = fs.statSync(tempFileName);
+        const modifiedTime = stats.mtimeMs;
+
+        await new Promise(resolve => setTimeout(resolve, checkInterval));
+
+        const newStats = fs.statSync(tempFileName);
+        const newModifiedTime = newStats.mtimeMs;
+        if (newModifiedTime > modifiedTime) {
+            isFileModified = true;
+        }
+    }
+
+    const editedText = fs.readFileSync(tempFileName, 'utf8');
     fs.unlinkSync(tempFileName);
 
     return editedText;
