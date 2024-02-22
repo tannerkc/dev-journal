@@ -12,7 +12,7 @@ import {
     getHexColor,
     loadEntries,
     saveEntry,
-    log, config, configFilePath, openInVSCode, openInEditor
+    log, config, configFilePath, openInVSCode, openInEditor, mostCommonValue
 } from "./utils.js";
 import {execSync} from "child_process";
 
@@ -41,14 +41,14 @@ program
                     type: 'input',
                     name: 'name',
                     message: 'What\'s your name?',
-                    default: config.name || '',
+                    default: config.name || null,
                     validate: value => value.trim() !== '' ? true : 'Please enter your name.',
                 },
                 {
                     type: 'input',
                     name: 'color',
                     message: 'What\'s your favorite colour? (hex value)',
-                    default: config.color || '',
+                    default: config.color || null,
                     validate: value => /^#[0-9A-F]{6}$/i.test(value) ? true : 'Please enter a valid hex color value (e.g., #RRGGBB)',
                 },
                 {
@@ -82,23 +82,35 @@ program
             log.yellow('Please run the config command.');
             process.exit()
         }
+        const entries = loadEntries()
+        const moodValues = entries.map(entry => entry.mood);
+        const dayRatingValues = entries.map(entry => entry.dayRating);
+        const productivityValues = entries.map(entry => entry.productivity);
+
+        const defaultMood = mostCommonValue(moodValues);
+        const defaultDayRating = mostCommonValue(dayRatingValues);
+        const defaultProductivity = mostCommonValue(productivityValues);
+
         const questions = [
             {
                 type: 'number',
                 name: 'mood',
                 message: 'On a scale of 0-10, how is your mood?',
+                default: defaultMood || null,
                 validate: value => value >= 0 && value <= 10 ? true : 'Please enter a number between 0 and 10',
             },
             {
                 type: 'number',
                 name: 'dayRating',
                 message: 'Rate your day overall (0-10):',
+                default: defaultDayRating || null,
                 validate: value => value >= 0 && value <= 10 ? true : 'Please enter a number between 0 and 10',
             },
             {
                 type: 'number',
                 name: 'productivity',
                 message: 'How productive were you today (0-10)?',
+                default: defaultProductivity || null,
                 validate: value => value >= 0 && value <= 10 ? true : 'Please enter a number between 0 and 10',
             },
             {
@@ -107,7 +119,7 @@ program
                 message: 'How many tasks did you complete today?',
             },
         ];
-        ui.log.write(config.name ? `${getAppropriateGreeting()}, ${config.name}! Let's set your configurations:` : 'Hello! It\'s nice to meet you!')
+        ui.log.write(`${getAppropriateGreeting()}, ${config.name}!`)
 
         const answers = await inquirer.prompt(questions);
         const promptSelection = await inquirer.prompt({
@@ -142,9 +154,10 @@ program
                 hour12: false, // Use 24-hour format
             }),
         };
-        
+
         let journalEntry;
-        if (config.selectedEditor === 'atom') {
+        const terminalEditors = ['vim', 'nano', 'emacs', 'ed', 'joe', 'jed', 'tilde', 'ne', 'micro']
+        if (!terminalEditors.includes(config.selectedEditor)) {
             const entryConfirmation = await inquirer.prompt({
                 type: 'confirm',
                 name: 'decision',

@@ -1,6 +1,7 @@
 import chalk from "chalk";
 import {execSync} from "child_process";
 import inquirer from "inquirer";
+import _ from 'lodash'
 import fs from "fs";
 
 export const journalFilePath = 'journal.json';
@@ -21,6 +22,12 @@ export const log = {
     custom: (text, hexColor) => console.log(chalk.hex(hexColor)(text)),
     default: console.log
 };
+
+export function mostCommonValue(arr) {
+    const counts = _.countBy(arr);
+    const maxCount = Math.max(...Object.values(counts));
+    return Object.keys(counts).find(key => counts[key] === maxCount);
+}
 export function getHexColor(value) {
     if (value >= 5) {
         // Yellow to green gradient
@@ -62,7 +69,7 @@ export function getAppropriateGreeting() {
 export function listAvailableEditors() {
     let editors = [];
     try {
-        const output = execSync('command -v vim nano code emacs subl atom notepad++ notepad gedit geany').toString();
+        const output = execSync('command -v vim nano code emacs ed joe jed tilde ne micro subl atom notepad++ notepad gedit geany').toString();
         editors = output.trim().split('\n');
         editors = editors.map(editorPath => editorPath.split('/').pop());
     } catch (error) {
