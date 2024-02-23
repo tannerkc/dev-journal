@@ -17,7 +17,7 @@ jobs:
           node-version: '14.x'
           registry-url: 'https://registry.npmjs.org'
       - name: Install dependencies 🔧
-        run: npm ci
+        run: yarn add
       - name: Publish package on NPM 📦
         if: github.event_name == 'push' && contains(github.event.head_commit.message, 'Release')
         run: npm publish
