@@ -71,4 +71,4 @@ This project is licensed under the [MIT License](LICENSE).
 
 ## Support
 
-If you encounter any issues or have questions or suggestions, please [open an issue](https://github.com/yourusername/dev-journal-cli/issues) on GitHub.
+If you encounter any issues or have questions or suggestions, please [open an issue](https://github.com/tannerkc/dev-journal/issues) on GitHub.

@@ -1,6 +1,6 @@
 {
   "name": "dev-journal",
-  "version": "1.0.1",
+  "version": "1.0.5",
   "description": "CLI tool for journaling",
   "main": "lib/index.js",
   "bin": {
@@ -8,8 +8,12 @@
   },
   "type": "module",
   "scripts": {
+    "start": "node src/index.mjs",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build:commonjs": "babel src --out-dir lib"
+    "prepublish": "babel src --out-dir lib"
+  },
+  "babel": {
+    "presets": ["@babel/preset-env"]
   },
   "keywords": [],
   "author": "Tanner Cottle",
@@ -23,11 +27,16 @@
     "lodash": "^4.17.21"
   },
   "engines": {
-    "node": ">=12.0.0"
+    "node": ">=16.0.0"
   },
   "devDependencies": {
     "@babel/cli": "^7.23.9",
     "@babel/core": "^7.23.9",
-    "@babel/preset-env": "^7.23.9"
+    "@babel/preset-env": "^7.23.9",
+    "babel-preset-es2015": "^6.24.1"
+  },
+  "peerDependencies": {
+    "@babel/cli": "^7.23.9",
+    "babel-core": "^7.0.0-bridge"
   }
 }
