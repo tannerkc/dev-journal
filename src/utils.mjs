@@ -57,21 +57,58 @@ export function getAppropriateGreeting() {
     const currentHour = currentTime.getHours();
 
     if (currentHour >= 5 && currentHour < 12) {
-        return 'Good morning';
+        return `Good ${getAppropriateTime()}`;
     } else if (currentHour >= 12 && currentHour < 18) {
-        return 'Good afternoon';
+        return `Good ${getAppropriateTime()}`;
     } else if (currentHour >= 18 && currentHour < 22) {
-        return 'Good evening';
+        return `Good ${getAppropriateTime()}`;
     } else {
         return "Woah! It's late";
     }
 }
+
+export function getAppropriateTime() {
+    const currentTime = new Date();
+    const currentHour = currentTime.getHours();
+    if (currentHour >= 5 && currentHour < 12) {
+        return 'morning';
+    }
+    if (currentHour >= 12 && currentHour < 18) {
+        return 'afternoon';
+    }
+    if (currentHour >= 18 && currentHour < 22) {
+        return 'evening';
+    }
+}
+
 export function listAvailableEditors() {
+    const editorMap = {
+        'code': { value: 'code', label: 'VSCode' },
+        'vim': { value: 'vim', label: 'Vim' },
+        'nano': { value: 'nano', label: 'nano', hint: 'My favorite' },
+        'subl': { value: 'subl', label: 'Sublime Text' },
+        'atom': { value: 'atom', label: 'Atom', hint: 'Oh no...' },
+        'notepad++': { value: 'notepad++', label: 'Notepad++' },
+        'notepad': { value: 'notepad', label: 'Notepad' },
+        'emacs': { value: 'emacs', label: 'Emacs' },
+        'ed': { value: 'ed', label: 'Ed' },
+        'joe': { value: 'joe', label: 'Joe' },
+        'jed': { value: 'jed', label: 'Jed' },
+        'tilde': { value: 'tilde', label: 'Tilde' },
+        'ne': { value: 'ne', label: 'Ne' },
+        'micro': { value: 'micro', label: 'Micro' },
+        'gedit': { value: 'gedit', label: 'Gedit' },
+        'geany': { value: 'geany', label: 'Geany' },
+    };
+
     let editors = [];
     try {
         const output = execSync('command -v vim nano code emacs ed joe jed tilde ne micro subl atom notepad++ notepad gedit geany').toString();
-        editors = output.trim().split('\n');
-        editors = editors.map(editorPath => editorPath.split('/').pop());
+        const availableEditors = output.trim().split('\n');
+        editors = availableEditors.map(editorPath => {
+            const editorCommand = editorPath.split('/').pop();
+            return editorMap[editorCommand];
+        }).filter(Boolean); // Remove undefined entries
     } catch (error) {
         console.error('Error listing editors:', error.message);
     }
@@ -108,6 +145,7 @@ export async function findSelectedEntry(date, timeOrIndex, entries) {
             name: `${entry.time}: ${entry.journalEntry.substring(0, 30)}...`,
             value: entry,
         }));
+        // TOD) convert to prompts select and use prompts note to display entry
         const { selectedEntry: chosenEntry } = await inquirer.prompt({
             type: 'list',
             name: 'selectedEntry',
