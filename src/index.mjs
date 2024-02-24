@@ -2,9 +2,11 @@
 
 import { program } from 'commander';
 import inquirer from 'inquirer';
+import * as prompts from '@clack/prompts'
 import chalk from 'chalk';
 import boxen from 'boxen';
 import babar from 'babar';
+import { setTimeout } from 'node:timers/promises'
 import fs from 'fs';
 import {
     findSelectedEntry,
@@ -13,17 +15,22 @@ import {
     getHexColor,
     loadEntries,
     saveEntry,
-    log, config, configFilePath, openInVSCode, openInEditor, mostCommonValue, getAverage
+    log, config, configFilePath, openInVSCode, openInEditor, mostCommonValue, getAverage, getAppropriateTime
 } from "./utils.mjs";
 
 try {
-    const ui = new inquirer.ui.BottomBar();
-
     process.env.EDITOR = 'nano';
     process.env.VISUAL = config.selectedEditor;
 
     const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
     const { name, description, version } = packageJson;
+
+    const psuedoLoad = async (time = 1000) => {
+        const s = prompts.spinner()
+        s.start()
+        await setTimeout(time)
+        s.stop()
+    }
 
     program
         .name(name)
@@ -36,38 +43,47 @@ try {
         .description('Configure user settings')
         .action(async () => {
             try{
-                ui.log.write(config.name ? `${getAppropriateGreeting()}, ${config.name}! Let's set your configurations:` : 'Hello! It\'s nice to meet you!')
-                const questions = [
+                prompts.intro(config.name ? `${getAppropriateGreeting()}, ${config.name}! Let's set your configurations:` : 'Hello! It\'s nice to meet you!')
+                const newConfig = await prompts.group(
                     {
-                        type: 'input',
-                        name: 'name',
-                        message: 'What\'s your name?',
-                        default: config.name || null,
-                        validate: value => value.trim() !== '' ? true : 'Please enter your name.',
+                        name: () => prompts.text(
+                            { message: 'What is your name?',
+                                initialValue: config.name ? config.name : undefined,
+                            validate(value) {
+                                if (value.length === 0) return `Please enter your name.`;
+                            }
+                        }),
+                        color: () => prompts.text(
+                            { message: `What is your favorite ${chalk.hex(config.color || '#BCBEC3')('colour')}?`,
+                                initialValue: config.color ? config.color : undefined,
+                                placeholder: '(hex' +
+                                    ' value)',
+                                validate(value) {
+                                    if (!/^#[0-9A-F]{6}$/i.test(value)) return 'Please enter a valid hex color value (e.g., #RRGGBB)'
+                                }
+                            }),
+                        selectedEditor: ({ results }) =>
+                        prompts.select({
+                            message: `Set your preferred editor:`,
+                            options: listAvailableEditors(),
+                        }),
                     },
                     {
-                        type: 'input',
-                        name: 'color',
-                        message: 'What\'s your favorite colour? (hex value)',
-                        default: config.color || null,
-                        validate: value => /^#[0-9A-F]{6}$/i.test(value) ? true : 'Please enter a valid hex color value (e.g., #RRGGBB)',
-                    },
-                    {
-                        type: 'list',
-                        name: 'selectedEditor',
-                        message: 'Select an editor:',
-                        default: listAvailableEditors().indexOf(process.env.VISUAL),
-                        choices: listAvailableEditors(),
-                        validate: selected => selected.length > 0 ? true : 'Please select at least one editor',
+                        onCancel: ({ results }) => {
+                            prompts.cancel('We\'ll keep everything the same.');
+                            process.exit(0);
+                        },
                     }
-                ];
-
-                const newConfig = await inquirer.prompt(questions)
+                )
 
                 process.env.VISUAL = newConfig.selectedEditor;
-
+                await psuedoLoad()
                 fs.writeFileSync(configFilePath, JSON.stringify(newConfig, null, 2));
-                log.custom('User settings saved successfully.', newConfig.color)
+
+                let nextSteps = `Run dev-journal write to create an entry.`;
+
+                prompts.note(nextSteps,chalk.hex(newConfig.color)('Settings saved successfully.'));
+                prompts.outro('Suggestions? ' + chalk.hex(newConfig.color)('https://github.com/tannerkc/dev-journal'))
             } catch (e) {
                 log.red(e)
                 process.exit(1);
@@ -93,57 +109,68 @@ try {
                 const defaultDayRating = mostCommonValue(dayRatingValues);
                 const defaultProductivity = mostCommonValue(productivityValues);
 
-                const questions = [
-                    {
-                        type: 'number',
-                        name: 'mood',
-                        message: 'On a scale of 0-10, how is your mood?',
-                        default: defaultMood || null,
-                        validate: value => value >= 0 && value <= 10 ? true : 'Please enter a number between 0 and 10',
-                    },
-                    {
-                        type: 'number',
-                        name: 'dayRating',
-                        message: 'Rate your day overall (0-10):',
-                        default: defaultDayRating || null,
-                        validate: value => value >= 0 && value <= 10 ? true : 'Please enter a number between 0 and 10',
-                    },
-                    {
-                        type: 'number',
-                        name: 'productivity',
-                        message: 'How productive were you today (0-10)?',
-                        default: defaultProductivity || null,
-                        validate: value => value >= 0 && value <= 10 ? true : 'Please enter a number between 0 and 10',
-                    },
-                    {
-                        type: 'number',
-                        name: 'tasksCompleted',
-                        message: 'How many tasks did you complete today?',
-                    },
-                ];
-                ui.log.write(`${getAppropriateGreeting()}, ${config.name}!`)
+                prompts.intro(`${getAppropriateGreeting()}, ${config.name}!`)
 
-                const answers = await inquirer.prompt(questions);
-                const promptSelection = await inquirer.prompt({
-                    type: 'list',
-                    name: 'selectedPrompt',
-                    message: 'Select journal a prompt (use Enter to select)',
-                    choices: [
-                        'Freestyle',
-                        'What was the highlight of your day?',
-                        'What challenges did you face?',
-                        'What are you grateful for today?',
-                        'Any lessons learned?',
+                const answers = await prompts.group(
+                    {
+                        mood: () => prompts.text({
+                            message: 'On a scale of 0-10, how is your mood?',
+                            initialValue: defaultMood || null,
+                            validate(value) {
+                                value = parseInt(value, 10)
+                                if (value.length === 0) return 'Please enter a number between 0 and 10';
+                                if (value < 0 || value > 10) return 'Please enter a number between 0 and 10';
+                            }
+                        }),
+                        dayRating: () => prompts.text({
+                            message: 'Rate your day overall (0-10):',
+                            initialValue: defaultDayRating || null,
+                            validate(value) {
+                                value = parseInt(value, 10)
+                                if (value.length === 0) return 'Please enter a number between 0 and 10';
+                                if (value < 0 || value > 10) return 'Please enter a number between 0 and 10';
+                            }
+                        }),
+                        productivity: () => prompts.text({
+                            message: 'How productive were you today (0-10)?',
+                            initialValue: defaultProductivity || null,
+                            validate(value) {
+                                value = parseInt(value, 10)
+                                if (value.length === 0) return 'Please enter a number between 0 and 10';
+                                if (value < 0 || value > 10) return 'Please enter a number between 0 and 10';
+                            }
+                        }),
+                        tasksCompleted: () => prompts.text({
+                            message: 'How many tasks did you complete today?',
+                        })
+                    },
+                    {
+                        onCancel: ({ results }) => {
+                            prompts.cancel(`We'll finish this later. Have a great ${getAppropriateTime()}!`);
+                            process.exit(0);
+                        },
+                    }
+                );
+
+                await psuedoLoad()
+
+                const promptSelection = await prompts.select({
+                    message: 'Select journal a prompt:',
+                    options: [
+                        {value: 'Freestyle', label: 'Freestyle'},
+                        {value: 'What was the highlight of your day?', label: 'What was the highlight of your day?'},
+                        {value: 'What challenges did you face?', label: 'What challenges did you face?'},
+                        {value: 'What are you grateful for today?', label: 'What are you grateful for today?'},
+                        {value: 'What lessons did you learn today?', label: 'What lessons did you learn today?'},
                     ],
-                    validate: selected => selected.length > 0 ? true : 'Please select a prompt',
                 });
                 const currentDate = new Date();
                 const newEntry = {
-                    mood: parseInt(answers.mood, 10),
-                    dayRating: parseInt(answers.dayRating, 10),
-                    productivity: parseInt(answers.productivity, 10),
-                    tasksCompleted: parseInt(answers.tasksCompleted, 10),
-                    journalPrompt: promptSelection.selectedPrompt,
+                    mood: parseInt(answers.mood, 10) || 0,
+                    dayRating: parseInt(answers.dayRating, 10) || 0,
+                    productivity: parseInt(answers.productivity, 10) || 0,
+                    tasksCompleted: parseInt(answers.tasksCompleted, 10) || 0,
+                    journalPrompt: promptSelection,
                     date: currentDate.toLocaleDateString(undefined, {
                         day: '2-digit',
                         month: '2-digit',
@@ -161,12 +188,10 @@ try {
                 let journalEntry;
                 const terminalEditors = ['vim', 'nano', 'emacs', 'ed', 'joe', 'jed', 'tilde', 'ne', 'micro']
                 if (!terminalEditors.includes(config.selectedEditor)) {
-                    const entryConfirmation = await inquirer.prompt({
-                        type: 'confirm',
-                        name: 'decision',
-                        message: 'Type your journal entry (press Enter to start):',
-                    })
-                    if(!entryConfirmation.decision) process.exit(0)
+                    const entryConfirmation = await prompts.confirm({
+                        message: 'Write your journal entry (press Enter to start):',
+                    });
+                    if(!entryConfirmation) process.exit(0)
                     journalEntry = await openInEditor(config.selectedEditor)
                 } else {
                     const entry = await inquirer.prompt({
@@ -179,6 +204,12 @@ try {
 
                 newEntry.journalEntry = journalEntry.trim();
                 saveEntry(newEntry);
+
+                await psuedoLoad()
+                let nextSteps = `Run dev-journal list to see your entries. \nRun dev-journal view [date] to view a specific entry. \nHave a great ${getAppropriateTime()}!`;
+
+                prompts.note(nextSteps,chalk.hex(config.color)('Journal entry saved successfully.'));
+                prompts.outro('Suggestions? ' + chalk.hex(config.color)('https://github.com/tannerkc/dev-journal'))
             } catch (e) {
                 log.red(e)
             }
@@ -189,6 +220,7 @@ try {
         .alias('l')
         .description('List all journal entries')
         .action(() => {
+            // TODO create a select list and use prompts.note to show a selected entry
             const entries = loadEntries();
             if (entries.length === 0) {
                 log.red('No entries found.');
