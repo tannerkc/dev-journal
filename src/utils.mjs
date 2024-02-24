@@ -3,9 +3,17 @@ import {execSync} from "child_process";
 import inquirer from "inquirer";
 import _ from 'lodash'
 import fs from "fs";
+import * as path from "path";
 
-export const journalFilePath = 'journal.json';
-export const configFilePath = 'config.json';
+const __dirname = path.dirname(new URL(import.meta.url).pathname);
+
+const djFolderPath = path.join(__dirname, '../..', 'dj');
+export const journalFilePath = path.join(djFolderPath, 'journal.json');
+export const configFilePath = path.join(djFolderPath, 'config.json');
+
+if (!fs.existsSync(djFolderPath)) {
+    fs.mkdirSync(djFolderPath);
+}
 export let config = {};
 if (fs.existsSync(configFilePath)) {
     const data = fs.readFileSync(configFilePath, 'utf8');
