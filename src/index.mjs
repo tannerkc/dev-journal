@@ -22,8 +22,8 @@ try {
     process.env.EDITOR = 'nano';
     process.env.VISUAL = config.selectedEditor;
 
-    const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-    const { name, description, version } = packageJson;
+    // const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+    // const { name, description, version } = packageJson;
 
     const psuedoLoad = async (time = 1000) => {
         const s = prompts.spinner()
