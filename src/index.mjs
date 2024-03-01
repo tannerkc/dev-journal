@@ -32,10 +32,10 @@ try {
         s.stop()
     }
 
-    program
-        .name(name)
-        .description(description)
-        .version(version);
+    // program
+    //     .name(name)
+    //     .description(description)
+    //     .version(version);
 
     program
         .command('config')
